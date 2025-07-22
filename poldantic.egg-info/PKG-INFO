@@ -1,0 +1,12 @@
+Metadata-Version: 2.4
+Name: poldantic
+Version: 0.1.0
+Summary: Convert Pydantic models to Polars schemas
+Author-email: Odos Matthews <odosmatthews@gmail.com>
+Project-URL: Repository, https://github.com/eddiethedean/poldantic
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: pydantic>=2.0
+Requires-Dist: polars>=0.20.0
+Dynamic: license-file
