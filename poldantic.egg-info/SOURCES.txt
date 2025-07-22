@@ -3,7 +3,6 @@ README.md
 pyproject.toml
 poldantic/__init__.py
 poldantic/schema.py
-poldantic/types.py
 poldantic.egg-info/PKG-INFO
 poldantic.egg-info/SOURCES.txt
 poldantic.egg-info/dependency_links.txt

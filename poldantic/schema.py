@@ -41,10 +41,10 @@ def _resolve_fieldinfo(annotation: Any) -> FieldInfo:
         if len(non_none_args) == 1:
             inner = _resolve_fieldinfo(non_none_args[0])
             return FieldInfo(inner.dtype, nullable=True)
-        return FieldInfo(pl.Object, nullable=True)
+        return FieldInfo(pl.Object(), nullable=True)
 
     if origin is Union:
-        return FieldInfo(pl.Object, nullable=True)
+        return FieldInfo(pl.Object(), nullable=True)
 
     if origin in (list, List):
         if args:
@@ -53,7 +53,7 @@ def _resolve_fieldinfo(annotation: Any) -> FieldInfo:
         return FieldInfo(pl.List(pl.Object), nullable=False)
 
     if origin in (dict, Dict, tuple, Tuple):
-        return FieldInfo(pl.Object, nullable=False)
+        return FieldInfo(pl.Object(), nullable=False)
     
     if isinstance(annotation, type) and issubclass(annotation, BaseModel):
         struct = get_polars_struct(annotation)
