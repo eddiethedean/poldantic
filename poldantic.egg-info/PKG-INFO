@@ -1,50 +1,29 @@
 Metadata-Version: 2.4
 Name: poldantic
-Version: 0.1.0
+Version: 0.2.0
 Summary: Convert Pydantic models to Polars schemas
 Author-email: Odos Matthews <odosmatthews@gmail.com>
-License: MIT License
-        
-        Copyright (c) [2025] [Odos Matthews]
-        
-        Permission is hereby granted, free of charge, to any person obtaining a copy
-        of this software and associated documentation files (the "Software"), to deal
-        in the Software without restriction, including without limitation the rights
-        to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-        copies of the Software, and to permit persons to whom the Software is
-        furnished to do so, subject to the following conditions:
-        
-        The above copyright notice and this permission notice shall be included in all
-        copies or substantial portions of the Software.
-        
-        THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-        IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-        FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-        AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-        LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-        OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-        SOFTWARE.
 Project-URL: Repository, https://github.com/eddiethedean/poldantic
 Requires-Python: >=3.8
 Description-Content-Type: text/markdown
-License-File: LICENSE
 Requires-Dist: pydantic>=2.0
 Requires-Dist: polars>=0.20.0
-Dynamic: license-file
 
 # 🧩 Poldantic
 
-**Poldantic** converts [Pydantic](https://docs.pydantic.dev/) models into [Polars](https://pola.rs/) schemas — making it easy to validate, align, and document your data pipeline types between the Python and Polars worlds.
+Convert [Pydantic](https://docs.pydantic.dev/) models into [Polars](https://pola.rs) schemas — and back again.
+
+> Poldantic makes it easy to bridge the world of data validation (Pydantic) with blazing-fast dataframes (Polars). Useful for type-safe ETL pipelines, FastAPI integrations, and schema round-tripping.
 
 ---
 
 ## ✨ Features
 
-- 🔁 Convert `BaseModel` classes to `polars.Schema` or `pl.Struct`
-- ✅ Handles optional fields (`Optional[T]`) and union types
-- 🧱 Supports nested and deeply nested Pydantic models
-- 📦 Outputs multiple formats: `dict`, `list`, `pl.Schema`, `pl.Struct`
-- 🧠 Tracks `nullable` status via `FieldInfo`
+- 🔁 **Two-way conversion** between Pydantic models and Polars schema dicts
+- 🧠 Smart handling of nested structs, lists, and mixed types
+- 🛠 Configurable `Optional[...]` wrapping to reflect Polars' nullable-by-default nature
+- 🧪 100% test coverage including complex edge cases
+- 🧱 Minimal dependencies, ready for production
 
 ---
 
@@ -54,73 +33,130 @@ Dynamic: license-file
 pip install poldantic
 ```
 
+> Make sure you also have:
+> ```bash
+> pip install pydantic polars
+> ```
+
 ---
 
-## 🚀 Usage
+## 🧪 Basic Usage
+
+### ✅ Convert a Pydantic model to a Polars schema
 
 ```python
+from poldantic import to_polars_schema
 from pydantic import BaseModel
-from typing import Optional, List
-import polars as pl
-import poldantic as pd
+from typing import List, Optional
 
+class Person(BaseModel):
+    name: str
+    tags: Optional[List[str]]
+
+schema = to_polars_schema(Person)
+print(schema)
+```
+
+**Output:**
+
+```python
+{'name': Utf8, 'tags': List[Utf8]}
+```
+
+---
+
+### ✅ Convert a Polars schema to a Pydantic model
+
+```python
+from poldantic import to_pydantic_model
+import polars as pl
+
+schema = {
+    "name": pl.Utf8,
+    "tags": pl.List(pl.Utf8),
+}
+
+Model = to_pydantic_model(schema)
+print(Model(name="Alice", tags=["x", "y"]))
+```
+
+**Output:**
+
+```python
+name='Alice' tags=['x', 'y']
+```
+
+---
+
+### 🧬 Nested Example
+
+```python
 class Address(BaseModel):
     street: str
-    zip: Optional[int]
+    zip: int
 
-class User(BaseModel):
+class Customer(BaseModel):
     id: int
-    name: str
     address: Address
-    tags: List[str]
 
-pd.get_polars_schema_dict(User)
-# {'id': pl.Int64, 'name': pl.Utf8, 'address': pl.Struct([...]), 'tags': pl.List(pl.Utf8)}
-
-pd.get_polars_schema(User)
-# pl.Schema({...})
-
-pd.get_polars_struct(User)
-# pl.Struct([...])
-
-pd.get_polars_fieldinfo_dict(User)
-# {'name': FieldInfo(dtype=Utf8, nullable=False), ...}
+to_polars_schema(Customer)
 ```
 
----
-
-## 🧪 Output Formats
-
-| Function | Output |
-|----------|--------|
-| `get_polars_schema_dict()` | `dict[str, pl.DataType]` |
-| `get_polars_schema_list()` | `list[(str, pl.DataType)]` |
-| `get_polars_fieldinfo_dict()` | `dict[str, FieldInfo]` |
-| `get_polars_fieldinfo_list()` | `list[(str, FieldInfo)]` |
-| `get_polars_schema()` | `pl.Schema` |
-| `get_polars_struct()` | `pl.Struct` |
-
----
-
-## 🔍 FieldInfo
-
-The `FieldInfo` object tracks both the Polars data type and its nullability:
+**Output:**
 
 ```python
-@dataclass
-class FieldInfo:
-    dtype: pl.DataType
-    nullable: bool = False
+{
+  'id': Int64,
+  'address': Struct({'street': Utf8, 'zip': Int64})
+}
 ```
 
 ---
 
-## 📚 Examples
+## ⚙️ API
 
-See [`examples/poldantic_demo.ipynb`](examples/poldantic_demo.ipynb) for a working notebook showing nested models and schema inspection.
+```python
+to_polars_schema(model: Type[BaseModel]) -> dict[str, pl.DataType]
+```
+
+```python
+to_pydantic_model(
+    schema: dict[str, pl.DataType],
+    model_name: str = "PolarsModel",
+    force_optional: bool = True
+) -> Type[BaseModel]
+```
 
 ---
 
-## 📜 License
+## 🧬 Supported Type Mappings
+
+| Pydantic Type           | Polars Type     |
+|-------------------------|-----------------|
+| `int`                  | `pl.Int64()`     |
+| `float`                | `pl.Float64()`   |
+| `str`                  | `pl.Utf8()`      |
+| `bool`                 | `pl.Boolean()`   |
+| `bytes`                | `pl.Binary()`    |
+| `datetime.date`        | `pl.Date()`      |
+| `datetime.datetime`    | `pl.Datetime()`  |
+| `datetime.time`        | `pl.Time()`      |
+| `List[T]`              | `pl.List(T)`     |
+| `Model` (nested)       | `pl.Struct(...)` |
+| Unknown/Mixed/Union    | `pl.Object()`    |
+
+---
+
+## ✅ Tests
+
+Run the full suite with:
+
+```bash
+pytest
+```
+
+---
+
+## 📚 License
 
 MIT License © 2025 Odos Matthews

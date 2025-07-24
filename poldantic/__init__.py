@@ -1,19 +1,12 @@
-from .schema import (
-    get_polars_schema,
-    get_polars_struct,
-    get_polars_schema_dict,
-    get_polars_schema_list,
-    get_polars_fieldinfo_dict,
-    get_polars_fieldinfo_list,
-    FieldInfo,
-)
+"""
+Poldantic: Convert Pydantic models into Polars schemas.
 
-__all__ = [
-    "get_polars_schema",
-    "get_polars_struct",
-    "get_polars_schema_dict",
-    "get_polars_schema_list",
-    "get_polars_fieldinfo_dict",
-    "get_polars_fieldinfo_list",
-    "FieldInfo",
-]
+This module provides a single top-level function:
+- to_polars_schema(model): Converts a Pydantic model into a Polars-compatible schema dict.
+"""
+
+from .infer_polars import to_polars_schema
+from .infer_pydantic import to_pydantic_model
+
+__all__ = ["to_polars_schema", "to_pydantic_model"]
+__version__ = "0.2.1"
