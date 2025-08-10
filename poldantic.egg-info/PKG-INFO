@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: poldantic
-Version: 0.2.0
+Version: 0.2.2
 Summary: Convert Pydantic models to Polars schemas
 Author-email: Odos Matthews <odosmatthews@gmail.com>
 Project-URL: Repository, https://github.com/eddiethedean/poldantic
@@ -11,43 +11,40 @@ Requires-Dist: polars>=0.20.0
 
 # 🧩 Poldantic
 
-Convert [Pydantic](https://docs.pydantic.dev/) models into [Polars](https://pola.rs) schemas — and back again.
+> Convert [Pydantic](https://docs.pydantic.dev/) models into [Polars](https://pola.rs) schemas — and back again.
 
-> Poldantic makes it easy to bridge the world of data validation (Pydantic) with blazing-fast dataframes (Polars). Useful for type-safe ETL pipelines, FastAPI integrations, and schema round-tripping.
+Poldantic bridges the world of **data validation** (Pydantic) and **blazing-fast computation** (Polars). It's ideal for type-safe ETL pipelines, FastAPI response models, and schema round-tripping between Python classes and DataFrames.
 
 ---
 
 ## ✨ Features
 
-- 🔁 **Two-way conversion** between Pydantic models and Polars schema dicts
-- 🧠 Smart handling of nested structs, lists, and mixed types
-- 🛠 Configurable `Optional[...]` wrapping to reflect Polars' nullable-by-default nature
-- 🧪 100% test coverage including complex edge cases
-- 🧱 Minimal dependencies, ready for production
+- 🔁 **Bidirectional conversion** — Pydantic models ⇄ Polars schemas
+- 🧠 Smart handling of nested models, containers (`list`, `set`, `tuple`), enums, `Optional`, and `Annotated`
+- 🛠 Sensible fallbacks (`pl.Object`) for ambiguous types like `Union[int, str]`
+- 🧪 Tested on a wide variety of primitives, structs, and container types
+- ⚙️ Minimal dependencies — Pydantic v2+, Polars ≥ 0.20 — production‑ready
 
 ---
 
-## 📦 Installation
+## 📦 Install
 
 ```bash
 pip install poldantic
 ```
 
-> Make sure you also have:
-> ```bash
-> pip install pydantic polars
-> ```
+**Requires:** Python ≥ 3.10, Pydantic ≥ 2.0, Polars ≥ 0.20.0
 
 ---
 
-## 🧪 Basic Usage
+## 🚀 Usage
 
-### ✅ Convert a Pydantic model to a Polars schema
+### 🔄 Pydantic ➜ Polars
 
 ```python
-from poldantic import to_polars_schema
 from pydantic import BaseModel
-from typing import List, Optional
+from poldantic.infer_polars import to_polars_schema
+from typing import Optional, List
 
 class Person(BaseModel):
     name: str
@@ -55,42 +52,50 @@ class Person(BaseModel):
 
 schema = to_polars_schema(Person)
 print(schema)
+# {'name': String, 'tags': List(String)}
 ```
 
-**Output:**
+**Initialize a DataFrame with the schema:**
 
 ```python
-{'name': Utf8, 'tags': List[Utf8]}
-```
-
----
-
-### ✅ Convert a Polars schema to a Pydantic model
-
-```python
-from poldantic import to_pydantic_model
 import polars as pl
 
-schema = {
-    "name": pl.Utf8,
-    "tags": pl.List(pl.Utf8),
-}
-
-Model = to_pydantic_model(schema)
-print(Model(name="Alice", tags=["x", "y"]))
-```
-
-**Output:**
-
-```python
-name='Alice' tags=['x', 'y']
+data = [{"name": "Alice", "tags": ["x"]}, {"name": "Bob", "tags": None}]
+df = pl.DataFrame(data, schema=schema)
 ```
 
 ---
 
-### 🧬 Nested Example
+### 🔄 Polars ➜ Pydantic
 
 ```python
+import polars as pl
+from poldantic.infer_pydantic import to_pydantic_model
+
+schema = {
+    "name": pl.String,
+    "tags": pl.List(pl.String())
+}
+
+Model = to_pydantic_model(schema)  # fields are Optional[...] by default
+print(Model(name="Alice", tags=["x", "y"]))
+# name='Alice' tags=['x', 'y']
+```
+
+> Pass `force_optional=False` to require fields on the generated model:
+>
+> ```python
+> StrictModel = to_pydantic_model(schema, "StrictModel", force_optional=False)
+> ```
+
+---
+
+### 🧬 Nested Models
+
+```python
+from pydantic import BaseModel
+from poldantic.infer_polars import to_polars_schema
+
 class Address(BaseModel):
     street: str
     zip: int
@@ -99,64 +104,127 @@ class Customer(BaseModel):
     id: int
     address: Address
 
-to_polars_schema(Customer)
-```
-
-**Output:**
-
-```python
-{
-  'id': Int64,
-  'address': Struct({'street': Utf8, 'zip': Int64})
-}
+print(to_polars_schema(Customer))
+# {'id': Int64, 'address': Struct([('street', String), ('zip', Int64)])}
 ```
 
 ---
 
-## ⚙️ API
+### ⚡ FastAPI Integration
 
 ```python
-to_polars_schema(model: Type[BaseModel]) -> dict[str, pl.DataType]
-```
+from fastapi import FastAPI
+from pydantic import BaseModel
+import polars as pl
+from poldantic.infer_polars import to_polars_schema
+from poldantic.infer_pydantic import to_pydantic_model
 
-```python
-to_pydantic_model(
-    schema: dict[str, pl.DataType],
-    model_name: str = "PolarsModel",
-    force_optional: bool = True
-) -> Type[BaseModel]
+class User(BaseModel):
+    id: int
+    name: str
+
+schema = to_polars_schema(User)
+UserOut = to_pydantic_model(schema, "UserOut", force_optional=False)
+
+app = FastAPI()
+
+@app.get("/users", response_model=list[UserOut])
+def list_users():
+    df = pl.DataFrame([{"id": 1, "name": "Ada"}, {"id": 2, "name": "Alan"}], schema=schema)
+    return df.to_dicts()
 ```
 
 ---
 
-## 🧬 Supported Type Mappings
+## ⚙️ Settings
 
-| Pydantic Type           | Polars Type     |
-|-------------------------|-----------------|
-| `int`                  | `pl.Int64()`     |
-| `float`                | `pl.Float64()`   |
-| `str`                  | `pl.Utf8()`      |
-| `bool`                 | `pl.Boolean()`   |
-| `bytes`                | `pl.Binary()`    |
-| `datetime.date`        | `pl.Date()`      |
-| `datetime.datetime`    | `pl.Datetime()`  |
-| `datetime.time`        | `pl.Time()`      |
-| `List[T]`              | `pl.List(T)`     |
-| `Model` (nested)       | `pl.Struct(...)` |
-| Unknown/Mixed/Union    | `pl.Object()`    |
+Both directions expose a `settings` object so you can tweak behavior without forking code.
+
+### Pydantic ➜ Polars (`poldantic.infer_polars.settings`)
+
+```python
+from poldantic.infer_polars import settings
+
+# Use pl.Enum for string-valued Python Enums when available (default: True)
+settings.use_pl_enum_for_string_enums = True
+
+# Default Decimal precision/scale when encountering `decimal.Decimal`
+settings.decimal_precision = 38
+settings.decimal_scale = 18
+
+# Represent UUID as pl.String (True) or pl.Object (False)
+settings.uuid_as_string = True
+```
+
+### Polars ➜ Pydantic (`poldantic.infer_pydantic.settings`)
+
+```python
+from poldantic.infer_pydantic import settings
+
+# Map pl.Duration → datetime.timedelta (True) or int (False)
+settings.durations_as_timedelta = True
+
+# Default Decimal instance for reverse mapping (precision/scale)
+settings.decimal_precision = 38
+settings.decimal_scale = 18
+```
+
+> **Note:** Settings are module‑level and affect conversions performed after they’re changed.
 
 ---
 
-## ✅ Tests
+## 📚 Supported Type Mappings
 
-Run the full suite with:
+| Python / Pydantic        | ➜ Polars dtype       | ➜ back to Python        |
+|--------------------------|----------------------|-------------------------|
+| `int`                    | `pl.Int64()`         | `int`                   |
+| `float`                  | `pl.Float64()`       | `float`                 |
+| `str`                    | `pl.String()`        | `str`                   |
+| `bool`                   | `pl.Boolean()`       | `bool`                  |
+| `bytes`                  | `pl.Binary()`        | `bytes`                 |
+| `datetime.date`          | `pl.Date()`          | `datetime.date`         |
+| `datetime.datetime`      | `pl.Datetime()`      | `datetime.datetime`     |
+| `datetime.time`          | `pl.Time()`          | `datetime.time`         |
+| `datetime.timedelta`     | `pl.Duration()`      | `datetime.timedelta`    |
+| `Decimal`                | `pl.Decimal(p,s)`    | `Decimal`               |
+| `Enum[str]`              | `pl.Enum([...])` or `pl.String()` | `str`     |
+| `list[T]`, `set[T]`      | `pl.List(inner)`     | `list[T]`               |
+| `tuple[T, ...]`          | `pl.List(inner)`     | `list[T]`               |
+| nested `BaseModel`       | `pl.Struct([...])`   | nested Pydantic model   |
+| `Union[int, str]`, `Any` | `pl.Object()`        | `Any`                   |
+| `dict[...]`              | `pl.Object()`        | `Any`                   |
+
+> Ambiguous unions (e.g., `Union[int, str]`) intentionally map to `pl.Object()` and back to `typing.Any`.
+
+---
+
+## 🧭 Design Notes
+
+- **Nullability**: From-Polars conversion wraps all fields in `Optional[...]` by default; disable with `force_optional=False`.
+- **Utf8 vs String**: Normalized to `pl.String` for forward compatibility.
+- **Structs**: Works with tuple fields `("name", dtype)` and `polars.Field` objects.
+- **Classes vs Instances**: Accepts both `pl.Int64` and `pl.Int64()` in schema dicts.
+
+---
+
+## 🧪 Tests
 
 ```bash
-pytest
+pytest -q
 ```
+
+Covers primitives, containers, structs, enums, optionals, and round‑trip inference.
 
 ---
 
-## 📚 License
+## 💡 When to use Poldantic
 
-MIT License © 2025 Odos Matthews
+- You already have **Pydantic models** and want to validate Polars data against them.
+- You have **Polars transformations** and want an API response model without writing it by hand.
+- You want **type-safe ETL**: validate with Pydantic → transform with Polars → publish validated results.
+
+---
+
+## 📄 License
+
+MIT © 2025 Odos Matthews

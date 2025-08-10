@@ -9,4 +9,4 @@ from .infer_polars import to_polars_schema
 from .infer_pydantic import to_pydantic_model
 
 __all__ = ["to_polars_schema", "to_pydantic_model"]
-__version__ = "0.2.1"
+__version__ = "0.2.2"

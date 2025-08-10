@@ -12,4 +12,7 @@ poldantic.egg-info/top_level.txt
 tests/test_core.py
 tests/test_edge.py
 tests/test_infer_polars.py
+tests/test_infer_polars_improvements.py
+tests/test_infer_polars_types.py
 tests/test_infer_pydantic.py
+tests/test_infer_pydantic_improvements.py

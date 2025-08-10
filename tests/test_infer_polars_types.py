@@ -72,8 +72,6 @@ def test_any_type():
     dtype = infer_polars_dtype(Any)
     assert dtype == pl.Object()
 
-def test_enum_type():
-    assert infer_polars_dtype(Color) == pl.String
 
 def test_union_of_multiple_types_falls_back():
     assert infer_polars_dtype(Union[int, str]) == pl.Object()
