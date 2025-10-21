@@ -4,19 +4,114 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "poldantic"
-version = "0.2.2"
+version = "0.3.0"
 description = "Convert Pydantic models to Polars schemas"
 authors = [{ name = "Odos Matthews", email = "odosmatthews@gmail.com" }]
 readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
     "pydantic>=2.0",
-    "polars>=0.20.0"
+    "polars>=0.20.0",
+    "typing-extensions>=4.0.0; python_version < '3.9'"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "pytest-xdist>=3.0",
+    "pytest-timeout>=2.0",
+    "pytest-benchmark>=4.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0",
+    "pre-commit>=3.0",
+]
+test = [
+    "pytest>=7.0",
+    "email-validator>=2.0",
 ]
 
 [tool.setuptools]
 packages = ["poldantic"]
 include-package-data = true
 
+[tool.setuptools.package-data]
+poldantic = ["py.typed"]
+
 [project.urls]
 Repository = "https://github.com/eddiethedean/poldantic"
+Homepage = "https://github.com/eddiethedean/poldantic"
+Issues = "https://github.com/eddiethedean/poldantic/issues"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--strict-markers",
+    "--tb=short",
+]
+
+[tool.coverage.run]
+source = ["poldantic"]
+omit = ["tests/*", "**/__pycache__/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py38"
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+    "B008",  # do not perform function calls in argument defaults
+    "UP006", # Use dict/list/tuple instead of Dict/List/Tuple (need 3.8 compat)
+    "UP007", # Use X | Y for Union (need 3.8 compat)
+    "UP037", # Remove quotes from type annotations (keep for 3.8 compat)
+    "UP045", # Use X | None instead of Optional[X] (need 3.8 compat)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["F401", "F811"]
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = false
+warn_unused_configs = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = false
+warn_no_return = true
+strict_equality = true
+
+[[tool.mypy.overrides]]
+module = "polars.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "poldantic.*"
+warn_return_any = false
+disable_error_code = ["dict-item", "arg-type", "return-value", "valid-type", "call-overload", "attr-defined"]

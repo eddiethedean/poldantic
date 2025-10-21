@@ -1,12 +1,12 @@
 import datetime as dt
 import enum
 from decimal import Decimal
-from typing import Annotated, Optional, Union, Tuple, List, Dict, Set
+from typing import Annotated, Dict, List, Optional, Set, Tuple, Union
 
 import polars as pl
 from pydantic import BaseModel, Field
 
-from poldantic.infer_polars import to_polars_schema, infer_polars_schema, infer_polars_dtype
+from poldantic.infer_polars import infer_polars_dtype, infer_polars_schema, to_polars_schema
 
 
 class Role(enum.Enum):
@@ -43,6 +43,7 @@ class Model(BaseModel):
     union_ambig: Union[int, str]
     lst_union: List[Union[int, str]]
 
+
 def test_primitive_mappings():
     sch = to_polars_schema(Model)
     assert sch["i"] == pl.Int64
@@ -57,10 +58,12 @@ def test_primitive_mappings():
     assert sch["dur"] == pl.Duration
     assert repr(infer_polars_dtype(Decimal)).startswith("Decimal(")
 
+
 def test_optional_and_annotated_stripped():
     sch = to_polars_schema(Model)
     assert sch["opt"] == pl.String  # Optional[str] strips to underlying dtype
-    assert sch["ann"] == pl.Int64   # Annotated[int, ...] strips to int
+    assert sch["ann"] == pl.Int64  # Annotated[int, ...] strips to int
+
 
 def test_enum_mapping_prefers_pl_enum_when_available():
     sch = to_polars_schema(Model)
@@ -69,6 +72,7 @@ def test_enum_mapping_prefers_pl_enum_when_available():
         assert (str(sch["enum_val"]).startswith("Enum(")) or (sch["enum_val"] == pl.String)
     else:
         assert sch["enum_val"] == pl.String
+
 
 def test_container_and_tuple_behavior():
     sch = to_polars_schema(Model)
@@ -89,6 +93,7 @@ def test_container_and_tuple_behavior():
     # Heterogeneous tuples -> Object
     assert sch["tup_hetero"] == pl.Object()
 
+
 def test_dict_and_union_fallbacks():
     sch = to_polars_schema(Model)
     assert sch["dct"] == pl.Object()
@@ -96,11 +101,14 @@ def test_dict_and_union_fallbacks():
     assert isinstance(sch["lst_union"], pl.List)
     assert sch["lst_union"].inner == pl.Object()
 
+
 def test_nested_struct_generation():
     struct_dtype = infer_polars_schema(SubModel)
     assert isinstance(struct_dtype, pl.Struct)
     # Ensure fields are present by name
-    names = [f[0] if isinstance(f, tuple) else getattr(f, "name", None) for f in struct_dtype.fields]  # compat across polars versions
+    names = [
+        f[0] if isinstance(f, tuple) else getattr(f, "name", None) for f in struct_dtype.fields
+    ]  # compat across polars versions
     assert set(names) == {"x", "y"}
 
     sch = to_polars_schema(Model)

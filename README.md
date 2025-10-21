@@ -1,5 +1,11 @@
 # 🧩 Poldantic
 
+[![PyPI version](https://badge.fury.io/py/poldantic.svg)](https://badge.fury.io/py/poldantic)
+[![Python versions](https://img.shields.io/pypi/pyversions/poldantic.svg)](https://pypi.org/project/poldantic/)
+[![Tests](https://github.com/eddiethedean/poldantic/workflows/Tests/badge.svg)](https://github.com/eddiethedean/poldantic/actions)
+[![codecov](https://codecov.io/gh/eddiethedean/poldantic/branch/main/graph/badge.svg)](https://codecov.io/gh/eddiethedean/poldantic)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 > Convert [Pydantic](https://docs.pydantic.dev/) models into [Polars](https://pola.rs) schemas — and back again.
 
 Poldantic bridges the world of **data validation** (Pydantic) and **blazing-fast computation** (Polars). It's ideal for type-safe ETL pipelines, FastAPI response models, and schema round-tripping between Python classes and DataFrames.
@@ -9,10 +15,13 @@ Poldantic bridges the world of **data validation** (Pydantic) and **blazing-fast
 ## ✨ Features
 
 - 🔁 **Bidirectional conversion** — Pydantic models ⇄ Polars schemas
-- 🧠 Smart handling of nested models, containers (`list`, `set`, `tuple`), enums, `Optional`, and `Annotated`
-- 🛠 Sensible fallbacks (`pl.Object`) for ambiguous types like `Union[int, str]`
-- 🧪 Tested on a wide variety of primitives, structs, and container types
-- ⚙️ Minimal dependencies — Pydantic v2+, Polars ≥ 0.20 — production‑ready
+- 🧠 **Smart type handling** — nested models, containers (`list`, `set`, `tuple`), enums, `Optional`, `Annotated`, and more
+- 🔒 **Thread-safe settings** — context-aware configuration using `contextvars` for concurrent environments
+- 🛡️ **Custom exceptions** — clear error messages for conversion failures and type mismatches
+- 🛠 **Sensible fallbacks** — ambiguous types like `Union[int, str]` map to `pl.Object()`
+- 🧪 **Thoroughly tested** — 47+ tests covering primitives, containers, structs, enums, and round-trip inference
+- 📦 **Minimal dependencies** — Pydantic v2+, Polars ≥ 0.20, Python 3.8+ — production‑ready
+- 🎯 **Type-safe** — full mypy coverage with strict type checking
 
 ---
 
@@ -22,11 +31,50 @@ Poldantic bridges the world of **data validation** (Pydantic) and **blazing-fast
 pip install poldantic
 ```
 
-**Requires:** Python ≥ 3.10, Pydantic ≥ 2.0, Polars ≥ 0.20.0
+**Requires:** Python ≥ 3.8, Pydantic ≥ 2.0, Polars ≥ 0.20.0
 
 ---
 
-## 🚀 Usage
+## 🚀 Quick Start
+
+```python
+from typing import Optional, List
+from pydantic import BaseModel
+import polars as pl
+from poldantic import to_polars_schema, to_pydantic_model
+
+# Define a Pydantic model
+class User(BaseModel):
+    id: int
+    name: str
+    tags: Optional[List[str]] = None
+
+# Convert to Polars schema
+schema = to_polars_schema(User)
+# {'id': Int64, 'name': String, 'tags': List(String)}
+
+# Create a DataFrame
+df = pl.DataFrame([
+    {"id": 1, "name": "Alice", "tags": ["python", "rust"]},
+    {"id": 2, "name": "Bob", "tags": None}
+], schema=schema)
+
+# Convert Polars schema back to Pydantic
+polars_schema = df.schema
+GeneratedModel = to_pydantic_model(polars_schema, "GeneratedModel")
+instance = GeneratedModel(id=3, name="Charlie", tags=["go"])
+```
+
+---
+
+## 📖 Usage Guide
+
+> 💡 **See also**: Interactive Jupyter notebooks in the [`examples/`](https://github.com/eddiethedean/poldantic/tree/main/examples) directory:
+> - [`01_basic_usage.ipynb`](https://github.com/eddiethedean/poldantic/blob/main/examples/01_basic_usage.ipynb) - Core functionality and round-trip conversions
+> - [`02_advanced_types.ipynb`](https://github.com/eddiethedean/poldantic/blob/main/examples/02_advanced_types.ipynb) - Nested models, enums, and complex types
+> - [`03_settings_configuration.ipynb`](https://github.com/eddiethedean/poldantic/blob/main/examples/03_settings_configuration.ipynb) - Customizing behavior with settings
+> - [`04_fastapi_integration.ipynb`](https://github.com/eddiethedean/poldantic/blob/main/examples/04_fastapi_integration.ipynb) - Building APIs with FastAPI
+> - [`05_etl_pipeline.ipynb`](https://github.com/eddiethedean/poldantic/blob/main/examples/05_etl_pipeline.ipynb) - Real-world ETL pipeline example
 
 ### 🔄 Pydantic ➜ Polars
 
@@ -94,7 +142,7 @@ class Customer(BaseModel):
     address: Address
 
 print(to_polars_schema(Customer))
-# {'id': Int64, 'address': Struct([('street', String), ('zip', Int64)])}
+# {'id': Int64, 'address': Struct({'street': String, 'zip': Int64})}
 ```
 
 ---
@@ -127,25 +175,32 @@ def list_users():
 
 ## ⚙️ Settings
 
-Both directions expose a `settings` object so you can tweak behavior without forking code.
+Both directions expose thread-safe, context-aware settings you can customize.
 
-### Pydantic ➜ Polars (`poldantic.infer_polars.settings`)
+### Pydantic ➜ Polars (`poldantic.infer_polars`)
 
 ```python
-from poldantic.infer_polars import settings
+from poldantic.infer_polars import settings, Settings, set_settings
 
-# Use pl.Enum for string-valued Python Enums when available (default: True)
+# Modify global settings (backward compatible)
 settings.use_pl_enum_for_string_enums = True
-
-# Default Decimal precision/scale when encountering `decimal.Decimal`
 settings.decimal_precision = 38
 settings.decimal_scale = 18
-
-# Represent UUID as pl.String (True) or pl.Object (False)
 settings.uuid_as_string = True
+
+# Or use immutable, context-aware settings (recommended for concurrent code)
+from poldantic.infer_polars import Settings, set_settings, get_settings
+
+custom_settings = Settings(
+    use_pl_enum_for_string_enums=False,
+    decimal_precision=10,
+    decimal_scale=2,
+    uuid_as_string=False
+)
+set_settings(custom_settings)  # Thread-safe, context-local
 ```
 
-### Polars ➜ Pydantic (`poldantic.infer_pydantic.settings`)
+### Polars ➜ Pydantic (`poldantic.infer_pydantic`)
 
 ```python
 from poldantic.infer_pydantic import settings
@@ -158,7 +213,28 @@ settings.decimal_precision = 38
 settings.decimal_scale = 18
 ```
 
-> **Note:** Settings are module‑level and affect conversions performed after they’re changed.
+> **Thread Safety:** Settings use `contextvars` for safe concurrent access. Each context (thread/async task) can have its own settings without interference.
+
+---
+
+## 🛡️ Error Handling
+
+Poldantic provides custom exceptions for better error messages:
+
+```python
+from poldantic import (
+    PoldanticError,           # Base exception
+    SchemaConversionError,    # Schema conversion failures
+    UnsupportedTypeError,     # Unsupported type encountered
+    InvalidSchemaError,       # Invalid schema provided
+)
+
+try:
+    schema = to_polars_schema(MyModel)
+except SchemaConversionError as e:
+    print(f"Conversion failed: {e}")
+    print(f"Field: {e.field_name}, Type: {e.field_type}")
+```
 
 ---
 
@@ -196,24 +272,78 @@ settings.decimal_scale = 18
 
 ---
 
-## 🧪 Tests
+## 🧪 Development & Testing
+
+### Quick Start
 
 ```bash
-pytest -q
+# Clone the repository
+git clone https://github.com/eddiethedean/poldantic.git
+cd poldantic
+
+# Install with development dependencies
+pip install -e ".[dev,test]"
+
+# Run tests
+pytest
+
+# Run with coverage
+pytest --cov=poldantic --cov-report=html
+
+# Type checking
+mypy poldantic
+
+# Linting & formatting
+ruff check poldantic tests
+ruff format poldantic tests
 ```
 
-Covers primitives, containers, structs, enums, optionals, and round‑trip inference.
+### Using Make
+
+```bash
+make install    # Install all dependencies
+make test       # Run tests with coverage
+make lint       # Run linters
+make format     # Format code
+make check      # Run all checks (lint + type check + tests)
+```
+
+For more details, see [CONTRIBUTING.md](https://github.com/eddiethedean/poldantic/blob/main/CONTRIBUTING.md).
 
 ---
 
 ## 💡 When to use Poldantic
 
-- You already have **Pydantic models** and want to validate Polars data against them.
-- You have **Polars transformations** and want an API response model without writing it by hand.
-- You want **type-safe ETL**: validate with Pydantic → transform with Polars → publish validated results.
+- ✅ You already have **Pydantic models** and want to create Polars DataFrames with matching schemas
+- ✅ You have **Polars transformations** and need FastAPI response models without manual typing
+- ✅ You want **type-safe ETL**: validate with Pydantic → transform with Polars → publish validated results
+- ✅ You need **bidirectional schema conversion** between validation and computation layers
+- ✅ You're building **data pipelines** that benefit from both Pydantic's validation and Polars' performance
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Please see [CONTRIBUTING.md](https://github.com/eddiethedean/poldantic/blob/main/CONTRIBUTING.md) for development setup, coding standards, and submission guidelines.
+
+---
+
+## 📝 Changelog
+
+See [CHANGELOG.md](https://github.com/eddiethedean/poldantic/blob/main/CHANGELOG.md) for a detailed history of changes.
 
 ---
 
 ## 📄 License
 
 MIT © 2025 Odos Matthews
+
+---
+
+## 🔗 Links
+
+- **PyPI**: https://pypi.org/project/poldantic/
+- **GitHub**: https://github.com/eddiethedean/poldantic
+- **Issues**: https://github.com/eddiethedean/poldantic/issues
+- **Pydantic**: https://docs.pydantic.dev/
+- **Polars**: https://pola.rs/

@@ -8,17 +8,28 @@ Pydantic ➜ Polars schema inference.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Annotated, Any, Dict, List, Set, Tuple, Type, Union, get_args, get_origin
-
 import datetime as _dt
 import enum
+import sys
 import types as _types  # for the `|` style unions in 3.10+
+from contextvars import ContextVar
+from dataclasses import dataclass, replace
 from decimal import Decimal
+from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union, get_args, get_origin
+
+try:
+    from typing import Annotated  # Python 3.9+
+except ImportError:
+    from typing_extensions import Annotated  # Python 3.8
 
 import polars as pl
 from pydantic import BaseModel
 
+# UnionType is only available in Python 3.10+
+if sys.version_info >= (3, 10):
+    _UNION_TYPES = (Union, _types.UnionType)
+else:
+    _UNION_TYPES = (Union,)
 
 __all__ = [
     "to_polars_schema",
@@ -26,34 +37,104 @@ __all__ = [
     "infer_polars_dtype",
     "Settings",
     "settings",
+    "get_settings",
+    "set_settings",
 ]
 
 
 # ------------------------- Settings -------------------------
 
-@dataclass(slots=True)
-class Settings:
-    """Tunable knobs for inference behavior."""
-    use_pl_enum_for_string_enums: bool = True
-    decimal_precision: int = 38
-    decimal_scale: int = 18
-    uuid_as_string: bool = True
+
+if sys.version_info >= (3, 10):
+
+    @dataclass(frozen=True, slots=True)
+    class Settings:
+        """
+        Tunable knobs for inference behavior.
+
+        Settings are immutable and thread-safe using contextvars.
+        To change settings, create a new Settings instance and use set_settings().
+        """
+
+        use_pl_enum_for_string_enums: bool = True
+        decimal_precision: int = 38
+        decimal_scale: int = 18
+        uuid_as_string: bool = True
+
+        def copy(self, **changes: Any) -> Settings:
+            """Create a copy of settings with specified changes."""
+            return replace(self, **changes)
+
+else:
+
+    @dataclass(frozen=True)
+    class Settings:
+        """
+        Tunable knobs for inference behavior.
+
+        Settings are immutable and thread-safe using contextvars.
+        To change settings, create a new Settings instance and use set_settings().
+        """
+
+        use_pl_enum_for_string_enums: bool = True
+        decimal_precision: int = 38
+        decimal_scale: int = 18
+        uuid_as_string: bool = True
+
+        def copy(self, **changes: Any) -> Settings:
+            """Create a copy of settings with specified changes."""
+            return replace(self, **changes)
 
 
-settings = Settings()
+# Global default settings
+_DEFAULT_SETTINGS = Settings()
+
+# Context-local settings (for thread/async safety)
+_settings_context: ContextVar[Optional[Settings]] = ContextVar("poldantic_settings", default=None)
+
+
+def get_settings() -> Settings:
+    """Get current settings (context-aware)."""
+    ctx_settings = _settings_context.get()
+    return ctx_settings if ctx_settings is not None else _DEFAULT_SETTINGS
+
+
+def set_settings(new_settings: Settings) -> None:
+    """Set settings for current context."""
+    _settings_context.set(new_settings)
+
+
+# Backward compatibility: module-level settings object
+# This acts as a proxy to get_settings() for attribute access
+class _SettingsProxy:
+    """Proxy object that forwards attribute access to context-aware settings."""
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(get_settings(), name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        # For backward compatibility, update the context
+        current = get_settings()
+        new_settings = current.copy(**{name: value})
+        set_settings(new_settings)
+
+
+settings = _SettingsProxy()
 
 
 # ------------------------- Primitives -------------------------
 
+
 def _decimal_dtype() -> pl.DataType:
+    s = get_settings()
     try:
-        return pl.Decimal(settings.decimal_precision, settings.decimal_scale)
+        return pl.Decimal(s.decimal_precision, s.decimal_scale)
     except Exception:
         # Older Polars or environments without Decimal support
         return pl.Object()
 
 
-_PRIMITIVE_POLARS_TYPES: dict[type[Any], pl.DataType] = {
+_PRIMITIVE_POLARS_TYPES: Dict[Type[Any], pl.DataType] = {
     int: pl.Int64,
     float: pl.Float64,
     str: pl.String,
@@ -66,14 +147,23 @@ _PRIMITIVE_POLARS_TYPES: dict[type[Any], pl.DataType] = {
     Decimal: _decimal_dtype(),
 }
 
+# UUID type (if available)
+_UUID_TYPE = None
 try:
     import uuid
-    _PRIMITIVE_POLARS_TYPES[uuid.UUID] = pl.String if settings.uuid_as_string else pl.Object()
+
+    _UUID_TYPE = uuid.UUID
 except Exception:
     pass
 
 
+def _get_uuid_dtype() -> pl.DataType:
+    """Get UUID dtype based on current settings."""
+    return pl.String if get_settings().uuid_as_string else pl.Object()
+
+
 # ------------------------- Helpers -------------------------
+
 
 def _strip_annotated(tp: Any) -> Any:
     if get_origin(tp) is Annotated:
@@ -82,10 +172,10 @@ def _strip_annotated(tp: Any) -> Any:
     return tp
 
 
-def _optional_inner(tp: Any) -> tuple[Any, bool]:
+def _optional_inner(tp: Any) -> Tuple[Any, bool]:
     """If Optional[T], return (T, True); else (tp, False)."""
     origin = get_origin(tp)
-    if origin in (Union, _types.UnionType):
+    if origin in _UNION_TYPES:
         args = tuple(get_args(tp))
         if len(args) >= 2 and type(None) in args:
             non_none = [a for a in args if a is not type(None)]
@@ -96,7 +186,8 @@ def _optional_inner(tp: Any) -> tuple[Any, bool]:
 
 def _enum_dtype(et: type[enum.Enum]) -> pl.DataType:
     # Prefer pl.Enum for string-valued enums when available and enabled.
-    if not settings.use_pl_enum_for_string_enums or not hasattr(pl, "Enum"):
+    s = get_settings()
+    if not s.use_pl_enum_for_string_enums or not hasattr(pl, "Enum"):
         return pl.String
     values = [e.value for e in et]
     if all(isinstance(v, str) for v in values):
@@ -109,12 +200,17 @@ def _enum_dtype(et: type[enum.Enum]) -> pl.DataType:
 
 # ------------------------- Inference -------------------------
 
+
 def infer_polars_dtype(field_type: Any) -> pl.DataType:
     """
     Infer a Polars dtype from a Python/typing/Pydantic annotation.
     """
     field_type = _strip_annotated(field_type)
     field_type, _ = _optional_inner(field_type)
+
+    # UUID type (dynamic based on settings)
+    if _UUID_TYPE is not None and field_type is _UUID_TYPE:
+        return _get_uuid_dtype()
 
     # Direct primitive map
     if field_type in _PRIMITIVE_POLARS_TYPES:
@@ -153,7 +249,7 @@ def infer_polars_dtype(field_type: Any) -> pl.DataType:
         return pl.Object()
 
     # Non-optional unions (e.g., Union[int, str]) -> Object
-    if origin in (Union, _types.UnionType):
+    if origin in _UNION_TYPES:
         return pl.Object()
 
     # Unknown -> Object
@@ -165,13 +261,13 @@ def infer_polars_schema(model: Type[BaseModel]) -> pl.Struct:
     Build a pl.Struct dtype for a (nested) Pydantic model.
     """
     # Pydantic v2 API: model.model_fields
-    fields: list[tuple[str, pl.DataType]] = []
+    fields: List[pl.Field] = []
     for name, fld in model.model_fields.items():
-        fields.append((name, infer_polars_dtype(fld.annotation)))
+        fields.append(pl.Field(name, infer_polars_dtype(fld.annotation)))
     return pl.Struct(fields)
 
 
-def to_polars_schema(model: Type[BaseModel]) -> dict[str, pl.DataType]:
+def to_polars_schema(model: Type[BaseModel]) -> Dict[str, pl.DataType]:
     """
     Infer a flat Polars schema dictionary from a Pydantic model.
 
@@ -211,6 +307,4 @@ def to_polars_schema(model: Type[BaseModel]) -> dict[str, pl.DataType]:
     >>> to_polars_schema(User)
     {'id': pl.Int64, 'name': pl.String, 'tags': pl.List(pl.String)}
     """
-    return {
-        name: infer_polars_dtype(fld.annotation)
-        for name, fld in model.model_fields.items()}
+    return {name: infer_polars_dtype(fld.annotation) for name, fld in model.model_fields.items()}

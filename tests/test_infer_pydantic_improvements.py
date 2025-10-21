@@ -1,8 +1,9 @@
 import datetime as dt
 from decimal import Decimal
-from typing import get_args, Optional
+from typing import Optional, get_args
 
 import polars as pl
+import pytest
 from pydantic import ValidationError
 
 from poldantic.infer_pydantic import to_pydantic_model
@@ -10,13 +11,14 @@ from poldantic.infer_pydantic import to_pydantic_model
 
 def test_accepts_dtype_classes_and_instances():
     schema = {
-        "id": pl.Int64,            # class
-        "name": pl.String(),       # instance
-        "vals": pl.List(pl.Int32), # mixed inner class
+        "id": pl.Int64,  # class
+        "name": pl.String(),  # instance
+        "vals": pl.List(pl.Int32),  # mixed inner class
     }
     Model = to_pydantic_model(schema, "T1")
     m = Model(id=1, name="a", vals=[1, 2, 3])
     assert m.id == 1 and m.name == "a" and m.vals == [1, 2, 3]
+
 
 def test_primitive_roundtrip_targets_python_types():
     schema = {
@@ -44,6 +46,7 @@ def test_primitive_roundtrip_targets_python_types():
     )
     assert m.dur == dt.timedelta(seconds=5)
 
+
 def test_decimal_maps_to_python_decimal_if_available():
     try:
         schema = {"price": pl.Decimal(38, 18)}
@@ -53,6 +56,7 @@ def test_decimal_maps_to_python_decimal_if_available():
     Model = to_pydantic_model(schema, "T3")
     m = Model(price=Decimal("1.23"))
     assert isinstance(m.price, Decimal)
+
 
 def test_struct_builds_nested_model_and_lists_work():
     # Construct a small struct dtype that should be accepted by our resolver
@@ -66,17 +70,19 @@ def test_struct_builds_nested_model_and_lists_work():
     inst = Parent(sub={"x": 1, "y": 2.5}, scores=[1, 2, 3])
     assert inst.sub.x == 1 and inst.sub.y == 2.5
 
+
 def test_force_optional_wraps_fields_by_default():
     schema = {"a": pl.Int64}
     Model = to_pydantic_model(schema, "T5")  # default force_optional=True
     # All fields optional, so creating with missing 'a' should succeed
     assert Model().a is None
 
+
 def test_force_optional_false_requires_fields():
     schema = {"a": pl.Int64}
     Model = to_pydantic_model(schema, "T6", force_optional=False)
     try:
         Model()
-        assert False, "Expected ValidationError when force_optional=False and field missing"
+        pytest.fail("Expected ValidationError when force_optional=False and field missing")
     except ValidationError:
         pass
