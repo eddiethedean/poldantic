@@ -39,7 +39,7 @@ class Model(BaseModel):
     opt: Optional[str]
     ann: Annotated[int, Field(gt=0)]
     enum_val: Role
-    lst_int: list[int]
+    lst_int: List[int]
     set_str: Set[str]
     tup_homo: Tuple[int, int, int]
     tup_ellipsis: Tuple[str, ...]
