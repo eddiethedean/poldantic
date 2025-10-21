@@ -1,2 +1,19 @@
 pydantic>=2.0
 polars>=0.20.0
+
+[:python_version < "3.9"]
+typing-extensions>=4.0.0
+
+[dev]
+pytest>=7.0
+pytest-cov>=4.0
+pytest-xdist>=3.0
+pytest-timeout>=2.0
+pytest-benchmark>=4.0
+ruff>=0.1.0
+mypy>=1.0
+pre-commit>=3.0
+
+[test]
+pytest>=7.0
+email-validator>=2.0

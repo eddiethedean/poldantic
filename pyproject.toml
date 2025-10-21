@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "poldantic"
-version = "0.3.0"
+version = "0.3.1"
 description = "Convert Pydantic models to Polars schemas"
 authors = [{ name = "Odos Matthews", email = "odosmatthews@gmail.com" }]
 readme = "README.md"
