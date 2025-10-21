@@ -41,7 +41,7 @@ def test_nested_schema():
 
 def test_list_field():
     class TagSet(BaseModel):
-        tags: list[str]
+        tags: List[str]
 
     schema = to_polars_schema(TagSet)
     assert schema["tags"] == pl.List(pl.String())
