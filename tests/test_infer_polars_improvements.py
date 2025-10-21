@@ -1,7 +1,13 @@
 import datetime as dt
 import enum
+import sys
 from decimal import Decimal
-from typing import Annotated, Dict, List, Optional, Set, Tuple, Union
+from typing import Dict, List, Optional, Set, Tuple, Union
+
+if sys.version_info >= (3, 9):
+    from typing import Annotated
+else:
+    from typing_extensions import Annotated
 
 import polars as pl
 from pydantic import BaseModel, Field
